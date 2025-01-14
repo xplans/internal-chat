@@ -17,6 +17,28 @@ import xchatuserjs from './www/xchatuser.js.txt';
 
 export default {
 	async fetch(request, env, ctx) {
+    const upgradeHeader = request.headers.get('Upgrade');
+    if (upgradeHeader === 'websocket') {
+      const webSocketPair = new WebSocketPair();
+      const [client, server] = Object.values(webSocketPair);
+      server.accept();
+
+      server.addEventListener('message', (event) => {
+        console.log('Received message:', event.data);
+        server.send(`Echo: ${event.data}`);
+      });
+
+      server.addEventListener('close', () => {
+        console.log('WebSocket connection closed');
+      });
+
+      return new Response(null, {
+        status: 101,
+        webSocket: client,
+      });
+    }
+
+    console.log('======================================================', request.headers.get('Upgrade'));
     // 请求方法
     const method = request.method;
     // 请求路径
