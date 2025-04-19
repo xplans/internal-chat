@@ -1,6 +1,6 @@
 # Wrangler版的"发个东西"
 
-一个局域网文字/文件P2P传输工具
+一个局域网文字/文件P2P传输工具, 基于[sunzsh/internal-chat](https://github.com/sunzsh/internal-chat), 使用CloudFlare的Wrangler实现。
 
 ## 服务部署（ws服务端和Web页面服务二合一）：
 
@@ -33,3 +33,5 @@ wrangler dev
    ```bash
    wrangler deploy
    ```
+## 免责声明：
+本项目仅用于学习交流，请勿用于非法用途，否则后果自负。

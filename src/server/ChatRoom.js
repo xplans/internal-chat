@@ -1,4 +1,5 @@
 import service from './data.js';
+import roomPwdConfig from './.room_pwd.json';
 
 const originalLog = console.log;
 console.log = function() {
@@ -6,8 +7,22 @@ console.log = function() {
   const pad = (num) => String(num).padStart(2, '0');
   const ms = String(date.getMilliseconds()).padStart(3, '0');
   const timestamp = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${ms}`;
-  originalLog.apply(console, [`[${timestamp}]`, ...arguments]);
+  originalLog.apply(console, [`🔥[${timestamp}]`, ...arguments]);
 };
+
+// 从room_pwd.json中获取房间密码
+let roomPwd = { };
+try {
+  // 获取可执行程序所在目录
+  // const exePath = process.pkg ? path.dirname(process.execPath) : __dirname;
+  let roomIds = [];
+  roomPwdConfig.forEach(item => {
+    roomIds.push(item.roomId);
+    roomPwd[item.roomId] = { "pwd": item.pwd, "turns": item.turns };
+  });
+} catch (e) {
+  console.error('Failed to load room_pwd.json', e);
+}
 
 const SEND_TYPE_REG = '1001'; // 注册后发送用户id
 const SEND_TYPE_ROOM_INFO = '1002'; // 发送房间信息
@@ -48,11 +63,35 @@ export class ChatRoom {
 
     let socket = server;
     const ip = request.headers.get('x-forwarded-for') ?? request.headers.get('cf-connecting-ip');
-    const currentId = service.registerUser(ip, socket, request);
+
+    const urlWithPath = (new URL(request.url)).pathname.split('/')
+    let roomId = null;
+    let pwd = null;
+    if (urlWithPath.length > 1 && urlWithPath[1].length > 0 && urlWithPath[1].length <= 32) {
+      roomId = urlWithPath[1].trim();
+    }
+    if (urlWithPath.length > 2 && urlWithPath[2].length > 0 && urlWithPath[2].length <= 32) {
+      pwd = urlWithPath[2].trim();
+    }
+    if (roomId === 'ws') {  // 兼容旧版本
+      roomId = null;
+    }
+    if (roomId === '') {
+      roomId = null;
+    }
+    let turns = null;
+    if (roomId) {
+      if (!pwd || !roomPwd[roomId] || roomPwd[roomId].pwd.toLowerCase() !== pwd.toLowerCase()) {
+        roomId = null;
+      } else {
+        turns = roomPwd[roomId].turns;
+      }
+    }
+    const currentId = service.registerUser(ip, socket, request, roomId);
     // 向客户端发送自己的id
-    socketSend_UserId(socket, currentId);
-    service.getUserList(ip).forEach(user => {
-      socketSend_RoomInfo(user.socket, ip);
+    socketSend_UserId(socket, currentId, roomId, turns);
+    service.getUserList(ip, roomId).forEach(user => {
+      socketSend_RoomInfo(user.socket, ip, roomId);
     });
     socketSend_JoinedRoom(socket, currentId);
 
@@ -73,8 +112,8 @@ export class ChatRoom {
       if (!type || !uid || !targetId) {
         return null;
       }
-      const me = service.getUser(ip, uid)
-      const target = service.getUser(ip, targetId)
+      const me = service.getUser(ip, roomId, uid)
+      const target = service.getUser(ip, roomId, targetId)
       if (!me || !target) {
         return;
       }
@@ -95,10 +134,10 @@ export class ChatRoom {
         return;
       }
       if (type === RECEIVE_TYPE_UPDATE_NICKNAME) {
-        const success = service.updateNickname(ip, uid, data.nickname);
+        const success = service.updateNickname(ip, roomId, uid, data.nickname);
         if (success) {
           // 通知所有用户昵称更新
-          service.getUserList(ip).forEach(user => {
+          service.getUserList(ip, roomId).forEach(user => {
             socketSend_NicknameUpdated(user.socket, { id: uid, nickname: data.nickname });
           });
         }
@@ -107,11 +146,19 @@ export class ChatRoom {
     });
 
     server.addEventListener('close', () => {
-      service.unregisterUser(ip, currentId);
-      service.getUserList(ip).forEach(user => {
-        socketSend_RoomInfo(user.socket, ip);
+      service.unregisterUser(ip, roomId, currentId);
+      service.getUserList(ip, roomId).forEach(user => {
+        socketSend_RoomInfo(user.socket, ip, roomId);
       });
-      console.log(`${currentId}@${ip} disconnected`);
+      console.error(`${currentId}@${ip} disconnected`);
+    });
+
+    server.addEventListener('error', () => {
+      service.unregisterUser(ip, roomId, currentId);
+      service.getUserList(ip, roomId).forEach(user => {
+        socketSend_RoomInfo(user.socket, ip, roomId);
+      });
+      console.error(`${currentId}@${ip}${roomId ? '/' + roomId : ''} disconnected`);
     });
 
     return new Response(null, {
@@ -126,11 +173,11 @@ function send(socket, type, data) {
   socket.send(JSON.stringify({ type, data }));
 }
 
-function socketSend_UserId(socket, id) {
-  send(socket, SEND_TYPE_REG, { id });
+function socketSend_UserId(socket, id, roomId, turns) {
+  send(socket, SEND_TYPE_REG, { id, roomId, turns });
 }
-function socketSend_RoomInfo(socket, ip, currentId) {
-  const result = service.getUserList(ip).map(user => ({ 
+function socketSend_RoomInfo(socket, ip, roomId) {
+  const result = service.getUserList(ip, roomId).map(user => ({ 
     id: user.id,
     nickname: user.nickname
   }));

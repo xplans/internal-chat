@@ -39,13 +39,16 @@ function internalNet(ip) {
   return false;
 }
 
-function getKey(ip) {
+function getKey(ip, roomId) {
+  if (roomId) {
+    return roomId;
+  }
   const isInternalNet = internalNet(ip);
   return isInternalNet ? 'internal' : ip;
 }
 
-function registerUser(ip, socket, request) {
-  const key = getKey(ip);
+function registerUser(ip, socket, request, roomId) {
+  const key = getKey(ip, roomId);
   const room = data[key]
   if (!room) {
     data[key] = []
@@ -54,13 +57,13 @@ function registerUser(ip, socket, request) {
   while (data[id]) {
     id = `${Math.floor(Math.random() * 1000000).toString().substring(3,5).padStart(2, '0')}${(new Date()).getMilliseconds().toString().padStart(3, '0')}`
   }
-  const nickname = getCookieValue(request);
+  const nickname = getCookieValue(socket);
   data[key].push({ id, socket, targets: {}, nickname })
   return id;
 }
 
-function unregisterUser(ip, id) {
-  const key = getKey(ip);
+function unregisterUser(ip, roomId, id) {
+  const key = getKey(ip, roomId);
   const room = data[key]
   if (room) {
     const index = room.findIndex(user => user.id === id)
@@ -70,21 +73,24 @@ function unregisterUser(ip, id) {
   }
 }
 
-function getUserList(ip) {
-  const key = getKey(ip);
+function getUserList(ip, roomId) {
+  const key = getKey(ip, roomId);
   const room = data[key]
   // 去掉socket属性
   return room ?? []
 }
 
-function getUser(ip, uid) {
-  const key = getKey(ip);
+function getUser(ip, roomId, uid) {
+  const key = getKey(ip, roomId);
   const room = data[key]
+  if (!room) {
+    return null;
+  }
   return room.find(user => user.id === uid)
 }
 
-function updateNickname(ip, id, nickname) {
-  const key = getKey(ip);
+function updateNickname(ip, roomId, id, nickname) {
+  const key = getKey(ip, roomId);
   const room = data[key];
   if (room) {
     const user = room.find(user => user.id === id);

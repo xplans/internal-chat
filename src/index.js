@@ -38,21 +38,30 @@ export default {
     const method = request.method;
     // 请求路径
     const url = new URL(request.url);
-    // console.log('==> url: ', url);
-    // console.log('==> method: ', method);
 
     if (method === 'GET') {
       const getParams = url.searchParams;
-      // console.log('==> params: ', '' + getParams);
       switch(url.pathname) {
         case '/':
           return new Response(index, { headers: { 'Content-Type': 'text/html' } });
         case '/index.js':
-          return new Response(indexjs, { headers: { 'Content-Type': 'application/x-javascript' } });
+          let cfifp = request.headers.get('cf-connecting-ip');
+          let indexjsStr = '';
+          if (cfifp == '127.0.0.1' || cfifp == '::1') {
+            indexjsStr = `const wsUrl = 'http://${request.headers.get('host')}/ws';` + indexjs;
+          }else{
+            indexjsStr = `const wsUrl = 'https://${request.headers.get('host')}/ws';` + indexjs;
+          }
+          return new Response(indexjsStr, { headers: { 'Content-Type': 'application/x-javascript' } });
         case '/style.css':
           return new Response(stylecss, { headers: { 'Content-Type': 'text/css' } });
         case '/xchatuser.js':
           return new Response(xchatuserjs, { headers: { 'Content-Type': 'application/x-javascript' } });
+        case '/favicon.ico':
+          return new Response(null, { status: 204, statusText: 'No Content' });
+        default:
+          // 处理对于自定义房间号的请求
+          return new Response(index, { headers: { 'Content-Type': 'text/html' } });
       }
     } else if (method === 'POST') {
       const postParams = await request.json();
