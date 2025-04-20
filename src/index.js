@@ -47,7 +47,7 @@ export default {
         case '/index.js':
           let cfifp = request.headers.get('cf-connecting-ip');
           let indexjsStr = '';
-          if (cfifp == '127.0.0.1' || cfifp == '::1') {
+          if (internalNet(cfifp)) {
             indexjsStr = `const wsUrl = 'http://${request.headers.get('host')}/ws';` + indexjs;
           }else{
             indexjsStr = `const wsUrl = 'https://${request.headers.get('host')}/ws';` + indexjs;
@@ -73,3 +73,28 @@ export default {
 
 
 };
+
+/*
+  A类地址：10.0.0.0–10.255.255.255
+  B类地址：172.16.0.0–172.31.255.255 
+  C类地址：192.168.0.0–192.168.255.255
+*/
+function internalNet(ip) {
+  if (ip.startsWith('10.')) {
+    return true;
+  }
+  if (ip.startsWith('172.')) {
+    const second = parseInt(ip.split('.')[1]);
+    if (second >= 16 && second <= 31) {
+      return true;
+    }
+  }
+  if (ip.startsWith('192.168.')) {
+    return true;
+  }
+  if (ip === '::1' || ip === '127.0.0.1') {
+    return true;
+  }
+
+  return false;
+}

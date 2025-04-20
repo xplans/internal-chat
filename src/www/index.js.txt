@@ -35,8 +35,10 @@ function initPage() {
     document.querySelector('.left').style.display = 'flex';
     document.querySelector('.right').style.display = 'block';
     document.getElementById('passwordModal').style.display = 'none';
-    // 连接WebSocket
-    connectWebSocket();
+    // 获取网络标识并连接WebSocket
+    getNetworkIdentifier().then(networkId => {
+      connectWebSocket(networkId);
+    });
   }
 }
 
@@ -62,9 +64,9 @@ function submitRoomPassword() {
 }
 
 // 连接WebSocket
-function connectWebSocket() {
+function connectWebSocket(networkId) {
   const roomId = window.location.pathname.split('/')[1];
-  const wsUrlWithPassword = wsUrl.replace(/\/$/g, '') + '/' + roomId + (roomPassword ? '/' + roomPassword : '');
+  const wsUrlWithPassword = wsUrl.replace(/\/$/g, '') + '/' + roomId + (roomPassword ? '/' + roomPassword : '') + '?netId=' + (networkId || 'default');
   signalingServer = new WebSocket(wsUrlWithPassword);
   
   signalingServer.onopen = () => {
@@ -132,6 +134,11 @@ function connectWebSocket() {
         user.nickname = data.nickname;
         refreshUsersHTML();
       }
+      return;
+    }
+    if (type === '2000') {
+      console.log(data);
+      addChatItem('system', `${data}`);
       return;
     }
   }
@@ -424,7 +431,7 @@ function refreshUsersHTML() {
     const isConnected = u.isMe || u.isConnected();
     const statusClass = isConnected ? 'connected' : 'disconnected';
     const statusIcon = isConnected ? 
-      `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>` : 
+      `<svg t="1745138359145" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="50531" width="16" height="16"><path d="M326.4 1008c-83.2 0-160.64-32-219.52-90.88a310.976 310.976 0 0 1 0-439.04l115.2-115.2c18.56-18.56 49.28-18.56 67.84 0s18.56 49.28 0 67.84l-115.2 115.2a214.4 214.4 0 0 0 0 303.36c80.64 80.64 222.08 81.28 303.36 0l115.2-115.2c18.56-18.56 49.28-18.56 67.84 0s18.56 49.28 0 67.84l-115.2 115.2c-58.88 58.88-136.32 90.88-219.52 90.88zM768 675.2c-12.16 0-24.32-4.48-33.92-14.08a48.256 48.256 0 0 1 0-67.84l115.2-115.2a214.4 214.4 0 0 0 0-303.36C768 93.44 627.2 93.44 545.92 174.72l-115.2 115.2c-18.56 18.56-49.28 18.56-67.84 0s-18.56-49.28 0-67.84l115.2-115.2C536.96 48 614.4 16 697.6 16s160.64 32 219.52 90.88a310.976 310.976 0 0 1 0 439.04l-115.2 115.2c-9.6 9.6-21.76 14.08-33.92 14.08z" p-id="50532" fill="#4caf50"></path><path d="M384 688c-12.16 0-24.32-4.48-33.92-14.08a48.256 48.256 0 0 1 0-67.84l256-256c18.56-18.56 49.28-18.56 67.84 0s18.56 49.28 0 67.84l-256 256c-9.6 9.6-21.76 14.08-33.92 14.08z" p-id="50533" fill="#4caf50"></path></svg>` :
       `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1 0 1.43-.98 2.63-2.31 2.98l1.46 1.46C20.88 15.61 22 13.95 22 12c0-2.76-2.24-5-5-5zm-1 4h-2.19l2 2H16zM2 4.27l3.11 3.11C3.29 8.12 2 9.91 2 12c0 2.76 2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1 0-1.59 1.21-2.9 2.76-3.07L8.73 11H8v2h2.73L13 15.27V17h1.73l4.01 4L20 19.74 3.27 3 2 4.27z"/></svg>`;
     
     const displayName = u.nickname || u.id;
@@ -669,3 +676,61 @@ document.addEventListener('DOMContentLoaded', function() {
     document.body.classList.remove('show-users');
   }
 });
+
+async function getNetworkIdentifier() {
+  try {
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ],
+      iceTransportPolicy: 'all'
+    });
+    
+    pc.createDataChannel('');
+    await pc.setLocalDescription(await pc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: true
+    }));
+    
+    const candidates = [];
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        // 使用Set对象去重IP地址
+        const localIPs = Array.from(new Set(
+          candidates
+            .map(c => c.candidate.split(' ')[4])
+            .filter(ip => ip && ip.includes('.')) // 只保留IPv4地址
+            .filter(ip => {
+              // 排除私有网段和特殊地址
+              return !(
+                ip.includes('-') ||
+                ip.startsWith('192.168.') ||
+                ip.startsWith('10.') ||
+                ip.startsWith('127.') ||
+                ip.startsWith('169.254.') ||
+                (ip.startsWith('172.') && parseInt(ip.split('.')[1]) >= 16 && parseInt(ip.split('.')[1]) <= 31)
+              );
+            })
+        ));
+
+        addChatItem('系统', `IP：${localIPs.join('\n')}`);
+
+        // 使用第一个外网IPv4地址作为网络标识
+        let networkSegment = localIPs[0];
+
+        pc.close();
+        resolve(networkSegment ? btoa(networkSegment) : 'default');
+      }, 1000);  // 等待2秒收集候选项
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          candidates.push(event.candidate);
+        }
+      };
+    });
+  } catch (e) {
+    console.error('Failed to get network identifier:', e);
+    return 'default';
+  }
+}

@@ -18,37 +18,30 @@ function getCookieValue(socket) {
 
 const data = {}
 
-/*
-  A类地址：10.0.0.0–10.255.255.255
-  B类地址：172.16.0.0–172.31.255.255 
-  C类地址：192.168.0.0–192.168.255.255
-*/
-function internalNet(ip) {
-  if (ip.startsWith('10.')) {
-    return true;
-  }
-  if (ip.startsWith('172.')) {
-    const second = parseInt(ip.split('.')[1]);
-    if (second >= 16 && second <= 31) {
-      return true;
-    }
-  }
-  if (ip.startsWith('192.168.')) {
-    return true;
-  }
-  return false;
-}
-
-function getKey(ip, roomId) {
+function getKey(ip, roomId, networkId) {
   if (roomId) {
     return roomId;
   }
-  const isInternalNet = internalNet(ip);
-  return isInternalNet ? 'internal' : ip;
+  
+  const isIPv6 = ip.includes(':');
+  let baseParts;
+  
+  if (isIPv6) {
+    // 处理IPv6地址，展开双冒号简写格式
+    const expanded = ip.replace('::', ':'.repeat(8 - ip.split(':').filter(Boolean).length)).split(':');
+    baseParts = expanded.slice(0, 4).filter(part => part !== '');
+  } else {
+    // 处理IPv4地址
+    baseParts = ip.split('.').slice(0, 3);
+  }
+  
+  const baseKey = baseParts.join(isIPv6 ? ':' : '.');
+  
+  return networkId ? `${networkId}-${baseKey}` : baseKey;
 }
 
-function registerUser(ip, socket, request, roomId) {
-  const key = getKey(ip, roomId);
+function registerUser(ip, socket, request, roomId, networkId) {
+  const key = getKey(ip, roomId, networkId);
   const room = data[key]
   if (!room) {
     data[key] = []
@@ -62,8 +55,8 @@ function registerUser(ip, socket, request, roomId) {
   return id;
 }
 
-function unregisterUser(ip, roomId, id) {
-  const key = getKey(ip, roomId);
+function unregisterUser(ip, roomId, id, networkId) {
+  const key = getKey(ip, roomId, networkId);
   const room = data[key]
   if (room) {
     const index = room.findIndex(user => user.id === id)
@@ -73,15 +66,15 @@ function unregisterUser(ip, roomId, id) {
   }
 }
 
-function getUserList(ip, roomId) {
-  const key = getKey(ip, roomId);
+function getUserList(ip, roomId, networkId) {
+  const key = getKey(ip, roomId, networkId);
   const room = data[key]
   // 去掉socket属性
   return room ?? []
 }
 
-function getUser(ip, roomId, uid) {
-  const key = getKey(ip, roomId);
+function getUser(ip, roomId, uid, networkId) {
+  const key = getKey(ip, roomId, networkId);
   const room = data[key]
   if (!room) {
     return null;
@@ -89,8 +82,8 @@ function getUser(ip, roomId, uid) {
   return room.find(user => user.id === uid)
 }
 
-function updateNickname(ip, roomId, id, nickname) {
-  const key = getKey(ip, roomId);
+function updateNickname(ip, roomId, id, nickname, networkId) {
+  const key = getKey(ip, roomId, networkId);
   const room = data[key];
   if (room) {
     const user = room.find(user => user.id === id);
@@ -102,4 +95,4 @@ function updateNickname(ip, roomId, id, nickname) {
   return false;
 }
 
-module.exports = { registerUser, unregisterUser, getUserList, getUser, updateNickname }
+module.exports = { registerUser, unregisterUser, getUserList, getUser, updateNickname, getKey }
