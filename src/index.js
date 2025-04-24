@@ -11,6 +11,7 @@
 import index from './www/index.html';
 import indexjs from './www/index.js.txt';
 import stylecss from './www/style.css.txt';
+import stylecss_expand from './www/style_expand.css.txt';
 import xchatuserjs from './www/xchatuser.js.txt';
 import { ChatRoom } from './server/ChatRoom.js';
 
@@ -43,6 +44,7 @@ export default {
       const getParams = url.searchParams;
       switch(url.pathname) {
         case '/':
+          console.log(`[GET] ${url.pathname} ${getParams.toString()}`);
           return new Response(index, { headers: { 'Content-Type': 'text/html' } });
         case '/index.js':
           let cfifp = request.headers.get('cf-connecting-ip');
@@ -55,6 +57,8 @@ export default {
           return new Response(indexjsStr, { headers: { 'Content-Type': 'application/x-javascript' } });
         case '/style.css':
           return new Response(stylecss, { headers: { 'Content-Type': 'text/css' } });
+        case '/style_expand.css':
+          return new Response(stylecss_expand, { headers: { 'Content-Type': 'text/css' } });
         case '/xchatuser.js':
           return new Response(xchatuserjs, { headers: { 'Content-Type': 'application/x-javascript' } });
         case '/favicon.ico':

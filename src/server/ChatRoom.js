@@ -1,5 +1,5 @@
 import service from './data.js';
-import roomPwdConfig from './.room_pwd.json';
+import roomPwdConfig from './room_pwd.json';
 
 const originalLog = console.log;
 console.log = function() {
@@ -18,7 +18,7 @@ try {
   let roomIds = [];
   roomPwdConfig.forEach(item => {
     roomIds.push(item.roomId);
-    roomPwd[item.roomId] = { "pwd": item.pwd, "turns": item.turns };
+    roomPwd[item.roomId] = { "pwd": item.pwd.toLowerCase(), "turns": item.turns };
   });
 } catch (e) {
   console.error('Failed to load room_pwd.json', e);
@@ -26,6 +26,7 @@ try {
 
 const SEND_TYPE_REG = '1001'; // 注册后发送用户id
 const SEND_TYPE_ROOM_INFO = '1002'; // 发送房间信息
+const SEND_TYPE_ROOM_SWITCH_INFO = '1002s'; // 发送房间信息
 const SEND_TYPE_JOINED_ROOM = '1003'; // 加入房间后的通知，比如对于新进用户，Ta需要开始连接其他人
 const SEND_TYPE_NEW_CANDIDATE = '1004'; // offer
 const SEND_TYPE_NEW_CONNECTION = '1005'; // new connection
@@ -38,6 +39,7 @@ const RECEIVE_TYPE_NEW_CONNECTION = '9002'; // new connection
 const RECEIVE_TYPE_CONNECTED = '9003'; // joined
 const RECEIVE_TYPE_KEEPALIVE = '9999'; // keep-alive
 const RECEIVE_TYPE_UPDATE_NICKNAME = '9004'; // 更新昵称请求
+const RECEIVE_TYPE_ENTER_ROOM = '9005'; // 进入指定房间请求
 
 export class ChatRoom {
   constructor(state, env) {
@@ -89,15 +91,14 @@ export class ChatRoom {
         turns = roomPwd[roomId].turns;
       }
     }
-    const currentId = service.registerUser(ip, socket, request, roomId, networkId);
+    let currentId = service.registerUser(ip, socket, request, roomId, networkId);
     // 向客户端发送自己的id
     socketSend_UserId(socket, currentId, roomId, turns);
     service.getUserList(ip, roomId, networkId).forEach(user => {
       socketSend_RoomInfo(user.socket, ip, roomId, networkId);
     });
     socketSend_JoinedRoom(socket, currentId);
-    let version = `服务连接成功！🎉  (Link: ${ip.includes(':')? 'IPv6' : 'IPv4'}  Ver: ${this.env.VERSION ? this.env.VERSION: 'dev'})`;
-    socketSend_SystemMessage(socket,  version);
+    socketSend_WelcomeInfo(socket, ip, roomId, this.env);
 
     server.addEventListener('message', (event) => {
       const msgStr = event.data.toString();
@@ -144,6 +145,41 @@ export class ChatRoom {
           service.getUserList(ip, roomId, networkId).forEach(user => {
             socketSend_NicknameUpdated(user.socket, { id: uid, nickname: data.nickname });
           });
+        }
+        return;
+      }
+      if (type === RECEIVE_TYPE_ENTER_ROOM) {
+        if (uid && data.enRoomId && data.roomPwd) {
+          const enRoomId = data.enRoomId;
+          let room = roomPwd[enRoomId];
+          if (!room) {
+            room = roomPwd[enRoomId] = { "pwd": data.roomPwd };
+          }
+          
+          if (room.pwd !== data.roomPwd.toLowerCase()) {
+            socketSend_RoomSwitch(socket, {'error': '2', 'msg': '密码错误'});
+            return;
+          }else{
+            service.unregisterUser(ip, roomId, currentId, networkId);
+            service.getUserList(ip, roomId, networkId).forEach(user => {
+              socketSend_RoomInfo(user.socket, ip, roomId, networkId);
+            });
+          }
+
+          socketSend_RoomSwitch(socket, {'error': '0', 'msg': '进入房间', 'roomId': enRoomId});
+          roomId = enRoomId;
+          currentId = service.registerUser(ip, socket, request, roomId, networkId);
+          // 向客户端发送自己的id
+          socketSend_UserId(socket, currentId, roomId, turns);
+          service.getUserList(ip, roomId, networkId).forEach(user => {
+            socketSend_RoomInfo(user.socket, ip, roomId, networkId);
+          });
+          socketSend_JoinedRoom(socket, currentId);
+          socketSend_WelcomeInfo(socket, ip, roomId, this.env);
+
+        }else{
+          socketSend_RoomSwitch(socket, {'error': '1', 'msg': '房间号或密码不能为空'});
+          return;
         }
         return;
       }
@@ -208,5 +244,14 @@ function socketSend_NicknameUpdated(socket, data) {
 }
 
 function socketSend_SystemMessage(socket, data) {
+  send(socket, SEND_TYPE_SYSTEM_MESSAGE, data);
+}
+
+function socketSend_RoomSwitch(socket, data) {
+  send(socket, SEND_TYPE_ROOM_SWITCH_INFO, data);
+}
+
+function socketSend_WelcomeInfo(socket, ip, roomId, env) {
+  let data = `${roomId ? '🏠['+roomId+']':''}连接成功！🎉  (Link: ${ip.includes(':')? 'IPv6' : 'IPv4'}  Ver: ${env.VERSION ? env.VERSION: 'dev'})`;
   send(socket, SEND_TYPE_SYSTEM_MESSAGE, data);
 }

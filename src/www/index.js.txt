@@ -112,6 +112,22 @@ function connectWebSocket(networkId) {
       refreshUsers(data);
       return;
     }
+    if (type === '1002s') {
+      if (data.error == '0') {
+        closeRoomModal();
+        switchRoomState(data.roomId);
+        let leftDiv = document.getElementsByClassName('left')[0];
+        let effectBox = document.getElementsByClassName('effect_box')[0];
+        leftDiv.style.backgroundColor = '#434343';
+        effectBox.style.display = 'flex'
+      }else{
+        const roomId = document.getElementById('roomIdInput');
+        const roomPwd = document.getElementById('roomPwdInput');
+        roomId.disabled = roomPwd.disabled = false;
+        alert(data.msg);
+      }
+      return;
+    }
     if (type === '1003') {
       joinedRoom()
       return;
@@ -137,7 +153,6 @@ function connectWebSocket(networkId) {
       return;
     }
     if (type === '2000') {
-      console.log(data);
       addChatItem('system', `${data}`);
       return;
     }
@@ -733,4 +748,67 @@ async function getNetworkIdentifier() {
     console.error('Failed to get network identifier:', e);
     return 'default';
   }
+}
+
+document.querySelector('.room-btn').addEventListener('click', async () => {
+  const modal = document.getElementById('roomModal');
+  modal.style.display = 'flex';
+  const enRoomId = document.getElementById('roomIdInput');
+  // 自动获取焦点
+  setTimeout(() => enRoomId.focus(), 0);
+  const roomPwd = document.getElementById('roomPwdInput');
+
+  // 添加回车事件监听
+  roomPwd.onkeydown = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault(); // 阻止默认的回车行为
+      enterRoom();
+    }
+  };
+});
+
+function enterRoom() {
+  let enRoomId = document.getElementById('roomIdInput').value.trim();
+  let roomPwd = document.getElementById('roomPwdInput').value.trim();
+  
+  if (enRoomId && roomPwd) {
+    roomPwd = MD5(roomPwd);
+    enRoomId.disabled = roomPwd.disabled = true;
+    // 发送到服务器
+    signalingServer.send(JSON.stringify({
+      uid: me.id,
+      targetId: me.id,
+      type: '9005',
+      data: { enRoomId, roomPwd }
+    }));
+  }
+}
+
+function closeRoomModal() {
+  const modal = document.getElementById('roomModal');
+  const roomId = document.getElementById('roomIdInput');
+  const roomPwd = document.getElementById('roomPwdInput');
+  modal.style.display = 'none';
+  roomId.disabled = roomPwd.disabled = false;
+  roomId.value = roomPwd.value = '';
+
+  // 清除回车事件监听
+  roomPwd.onkeydown = null;
+  switchRoomState();
+}
+
+function switchRoomState(roomId) {
+  if (roomId && roomId != me.roomId) {
+    const el = document.getElementById('room-btn');
+    const icon = document.getElementById('room-icon');
+    let opacity = el.style.opacity;
+    if (!opacity || opacity === '0.3') {
+      el.style.opacity = '1';
+      icon.style.boxShadow = '0 0 8px rgba(255, 255, 255, 0.8)';
+    }else{
+      el.style.opacity = '0.3';
+      icon.style.boxShadow = '';
+    }
+  }
+
 }
